@@ -4,7 +4,7 @@
 # about: Enables push notifications via Amazon SNS. To be used in conjunction with a mobile app.
 # version: 0.1
 # authors: Penar Musaraj
-# url: https://github.com/discourse/discourse-amazon-sns
+# url: https://github.com/HelloPareto/discourse-amazon-sns
 
 enabled_site_setting :enable_amazon_sns_pns
 
@@ -40,6 +40,27 @@ after_initialize do
         user_id: user.id,
         payload: payload,
         unread: unread_total,
+      )
+    end
+  end
+
+  # Handle user logout - disable all active subscriptions for the user
+  # This ensures devices stop receiving notifications after logout
+  # Note: Subscriptions are disabled, not deleted, so they can be re-enabled on next login
+  on(:user_logged_out) do |user|
+    next unless user&.amazon_sns_subscriptions
+
+    active_subscriptions =
+      user.amazon_sns_subscriptions.where(status: AmazonSnsSubscription.statuses[:enabled])
+
+    if active_subscriptions.exists?
+      count = active_subscriptions.count
+      active_subscriptions.update_all(
+        status: AmazonSnsSubscription.statuses[:disabled],
+        status_changed_at: Time.zone.now,
+      )
+      Rails.logger.info(
+        "Disabled #{count} SNS subscription(s) for user #{user.username} (ID: #{user.id}) on logout",
       )
     end
   end
